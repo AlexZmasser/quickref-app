@@ -1157,7 +1157,7 @@ export default function App() {
                       onClick={() => setSelectedProductId(p.id)}
                       className="text-left bg-white border border-stone-300 rounded-lg overflow-hidden hover:border-amber-700 hover:shadow-md transition shadow-sm"
                     >
-                      <div className="relative h-48 bg-stone-100 border-b border-stone-200">
+                      <div className="relative h-96 bg-stone-100 border-b border-stone-200">
                         {p.images && p.images[0] ? (
                           <img src={p.images[0]} alt="" className="w-full h-full object-cover" />
                         ) : (
