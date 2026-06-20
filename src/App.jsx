@@ -5,13 +5,14 @@ import {
   Download, Upload, Pencil, ImagePlus, Check, Package
 } from "lucide-react";
 
-const BRANDS = ["Legge", "Brio", "Schlage", "Lemaar"];
+const BRANDS = ["Legge", "Brio", "Schlage", "Lemaar", "Gainsborough"];
 
 const BRAND_STYLE = {
-  Legge:   "bg-indigo-50 text-indigo-700 border-indigo-200",
-  Brio:    "bg-rose-50 text-rose-700 border-rose-200",
-  Schlage: "bg-sky-50 text-sky-700 border-sky-200",
-  Lemaar:  "bg-emerald-50 text-emerald-700 border-emerald-200",
+  Legge:        "bg-indigo-50 text-indigo-700 border-indigo-200",
+  Brio:         "bg-rose-50 text-rose-700 border-rose-200",
+  Schlage:      "bg-sky-50 text-sky-700 border-sky-200",
+  Lemaar:       "bg-emerald-50 text-emerald-700 border-emerald-200",
+  Gainsborough: "bg-amber-50 text-amber-700 border-amber-200",
 };
 
 const CATEGORIES = [
@@ -1156,7 +1157,7 @@ export default function App() {
                       onClick={() => setSelectedProductId(p.id)}
                       className="text-left bg-white border border-stone-300 rounded-lg overflow-hidden hover:border-amber-700 hover:shadow-md transition shadow-sm"
                     >
-                      <div className="relative h-32 bg-stone-100 border-b border-stone-200">
+                      <div className="relative h-48 bg-stone-100 border-b border-stone-200">
                         {p.images && p.images[0] ? (
                           <img src={p.images[0]} alt="" className="w-full h-full object-cover" />
                         ) : (
