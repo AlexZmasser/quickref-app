@@ -307,13 +307,29 @@ function compressImage(file, maxWidth = 640, quality = 0.6) {
         canvas.height = Math.max(1, Math.round(img.height * scale));
         const ctx = canvas.getContext("2d");
         ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-        resolve(canvas.toDataURL("image/jpeg", quality));
+        canvas.toBlob(
+          (blob) => {
+            if (blob) resolve(blob);
+            else reject(new Error("Image compression failed"));
+          },
+          "image/jpeg",
+          quality
+        );
       };
       img.onerror = reject;
       img.src = e.target.result;
     };
     reader.onerror = reject;
     reader.readAsDataURL(file);
+  });
+}
+
+function blobToDataURL(blob) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result);
+    reader.onerror = reject;
+    reader.readAsDataURL(blob);
   });
 }
 
@@ -326,14 +342,32 @@ function ImagePicker({ images, setImages }) {
     if (!files.length) return;
     setUploading(true);
     try {
-      const compressed = await Promise.all(files.map((f) => compressImage(f)));
-      setImages((prev) => [...prev, ...compressed]);
+      const results = await Promise.all(
+        files.map(async (f) => {
+          const blob = await compressImage(f);
+          // If a cloud uploader is wired up (e.g. Supabase, in the deployed build),
+          // use it and store the resulting URL. Otherwise fall back to embedding
+          // the image directly as base64 (the default Claude.ai artifact behaviour).
+          if (typeof window.uploadImage === "function") {
+            return await window.uploadImage(blob);
+          }
+          return await blobToDataURL(blob);
+        })
+      );
+      setImages((prev) => [...prev, ...results]);
     } catch (e) {
     } finally {
       setUploading(false);
     }
   };
-  const removeImage = (idx) => setImages((prev) => prev.filter((_, i) => i !== idx));
+
+  const removeImage = (idx) => {
+    const removed = images[idx];
+    setImages((prev) => prev.filter((_, i) => i !== idx));
+    if (typeof window.deleteImage === "function" && typeof removed === "string" && removed.startsWith("http")) {
+      window.deleteImage(removed).catch(() => {});
+    }
+  };
 
   return (
     <div>
@@ -750,6 +784,7 @@ export default function App() {
   const [selectedProductId, setSelectedProductId] = useState(null);
   const [showProductForm, setShowProductForm] = useState(false);
   const [editingProduct, setEditingProduct] = useState(null);
+  const [productNoteDraft, setProductNoteDraft] = useState("");
 
   const [toast, setToast] = useState(null);
   const [noteDraft, setNoteDraft] = useState("");
@@ -899,6 +934,28 @@ export default function App() {
   useEffect(() => {
     setStepStatus({});
   }, [selectedId]);
+
+  useEffect(() => {
+    setProductNoteDraft("");
+  }, [selectedProductId]);
+
+  const addProductNote = (productId, text) => {
+    if (!text.trim()) return;
+    const next = products.map((p) =>
+      p.id === productId
+        ? { ...p, notes: [{ id: "pn" + Date.now(), text: text.trim(), ts: Date.now() }, ...(p.notes || [])] }
+        : p
+    );
+    persistProducts(next);
+    setProductNoteDraft("");
+  };
+
+  const deleteProductNote = (productId, noteId) => {
+    const next = products.map((p) =>
+      p.id === productId ? { ...p, notes: (p.notes || []).filter((n) => n.id !== noteId) } : p
+    );
+    persistProducts(next);
+  };
 
   const toggleStep = (idx, status) => {
     setStepStatus((prev) => {
@@ -1611,6 +1668,45 @@ export default function App() {
                   </div>
                 </>
               )}
+
+              <div className="text-xs uppercase tracking-wide font-semibold text-stone-400 mb-2">Notes</div>
+              <div className="mb-5">
+                <textarea
+                  value={productNoteDraft}
+                  onChange={(e) => setProductNoteDraft(e.target.value)}
+                  placeholder="e.g. often confused with Mode, check stock before quoting…"
+                  rows={2}
+                  className="w-full text-sm border border-stone-300 rounded-md p-2.5 focus:outline-none focus:ring-2 focus:ring-amber-700 focus:border-amber-700"
+                />
+                <div className="flex justify-end mt-1.5">
+                  <button
+                    onClick={() => addProductNote(selectedProduct.id, productNoteDraft)}
+                    className="bg-amber-700 hover:bg-amber-800 text-white text-xs font-medium px-3 py-1.5 rounded-md transition"
+                  >
+                    Add note
+                  </button>
+                </div>
+                {(selectedProduct.notes || []).length > 0 && (
+                  <div className="space-y-2 mt-3">
+                    {selectedProduct.notes.map((n) => (
+                      <div key={n.id} className="bg-stone-50 border border-stone-200 rounded-md p-2.5 flex items-start gap-2">
+                        <div className="flex-1 min-w-0">
+                          <div className="text-sm text-stone-800 break-words">{n.text}</div>
+                          <div className="flex items-center gap-1.5 mt-1 text-[11px] text-stone-400">
+                            <Clock className="w-3 h-3" /> {formatTime(n.ts)}
+                          </div>
+                        </div>
+                        <button
+                          onClick={() => deleteProductNote(selectedProduct.id, n.id)}
+                          className="text-stone-300 hover:text-rose-600 transition shrink-0"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
 
               <div className="flex gap-2">
                 <button
