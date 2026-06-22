@@ -25,6 +25,7 @@ const CATEGORIES = [
   { id: "entrance", label: "Entrance Hardware" },
   { id: "bolts", label: "Flush & Security Bolts" },
   { id: "spares", label: "Spare Parts" },
+  { id: "sliding", label: "Sliding & Folding" },
   { id: "policy", label: "Policy & Warranty" },
 ];
 
@@ -37,6 +38,7 @@ const CATEGORY_STYLE = {
   entrance:  { dot: "bg-orange-600",  text: "text-orange-700" },
   bolts:     { dot: "bg-violet-600",  text: "text-violet-700" },
   spares:    { dot: "bg-emerald-600", text: "text-emerald-700" },
+  sliding:   { dot: "bg-cyan-600",    text: "text-cyan-700" },
   policy:    { dot: "bg-stone-500",   text: "text-stone-700" },
 };
 
@@ -403,31 +405,71 @@ function ImagePicker({ images, setImages }) {
   );
 }
 
+// Normalise a steps array — handles both old plain-string format and new {text,image} format
+function normaliseSteps(steps) {
+  return (steps || []).map((s) =>
+    typeof s === "string" ? { text: s, image: null } : { text: s.text || "", image: s.image || null }
+  );
+}
+
 function EntryFormModal({ initial, allProducts, onClose, onSave }) {
   const [title, setTitle] = useState(initial?.title || "");
   const [category, setCategory] = useState(initial?.category || "levers");
   const [model, setModel] = useState(initial?.model || "");
   const [summary, setSummary] = useState(initial?.summary || "");
-  const [stepsText, setStepsText] = useState((initial?.steps || []).join("\n"));
+  const [steps, setSteps] = useState(() => {
+    const s = normaliseSteps(initial?.steps);
+    return s.length > 0 ? s : [{ text: "", image: null }];
+  });
   const [tagsText, setTagsText] = useState((initial?.tags || []).join(", "));
   const [escalate, setEscalate] = useState(initial?.escalate || false);
   const [images, setImages] = useState(initial?.images || []);
   const [productIds, setProductIds] = useState(initial?.productIds || []);
   const [productSearch, setProductSearch] = useState("");
+  const [uploadingStep, setUploadingStep] = useState(null);
+  const stepFileRefs = useRef([]);
 
   const productCandidates = (allProducts || [])
     .filter((p) => !productIds.includes(p.id))
     .filter((p) => !productSearch.trim() || p.name.toLowerCase().includes(productSearch.trim().toLowerCase()))
     .slice(0, 6);
 
+  const updateStep = (idx, field, value) => {
+    setSteps((prev) => prev.map((s, i) => (i === idx ? { ...s, [field]: value } : s)));
+  };
+
+  const addStep = () => setSteps((prev) => [...prev, { text: "", image: null }]);
+
+  const removeStep = (idx) => setSteps((prev) => prev.filter((_, i) => i !== idx));
+
+  const handleStepImage = async (idx, fileList) => {
+    const file = Array.from(fileList || [])[0];
+    if (!file) return;
+    setUploadingStep(idx);
+    try {
+      const blob = await compressImage(file);
+      let result;
+      if (typeof window.uploadImage === "function") {
+        result = await window.uploadImage(blob);
+      } else {
+        result = await blobToDataURL(blob);
+      }
+      updateStep(idx, "image", result);
+    } catch (e) {
+    } finally {
+      setUploadingStep(null);
+    }
+  };
+
   const submit = () => {
-    if (!title.trim() || !stepsText.trim()) return;
+    const validSteps = steps.filter((s) => s.text.trim());
+    if (!title.trim() || validSteps.length === 0) return;
     onSave({
       title: title.trim(),
       category,
       model: model.trim(),
       summary: summary.trim(),
-      steps: stepsText.split("\n").map((s) => s.trim()).filter(Boolean),
+      steps: validSteps.map((s) => ({ text: s.text.trim(), image: s.image || null })),
       tags: tagsText.split(",").map((t) => t.trim()).filter(Boolean),
       escalate,
       images,
@@ -486,13 +528,68 @@ function EntryFormModal({ initial, allProducts, onClose, onSave }) {
             />
           </div>
           <div>
-            <label className="text-xs font-semibold text-stone-500">Steps (one per line)</label>
-            <textarea
-              value={stepsText}
-              onChange={(e) => setStepsText(e.target.value)}
-              rows={4}
-              className="w-full border border-stone-300 rounded-md px-2.5 py-1.5 text-sm mt-1"
-            />
+            <div className="flex items-center justify-between mb-1.5">
+              <label className="text-xs font-semibold text-stone-500">Steps</label>
+              <button onClick={addStep} className="flex items-center gap-1 text-xs text-amber-700 hover:text-amber-900 font-medium">
+                <Plus className="w-3 h-3" /> Add step
+              </button>
+            </div>
+            <div className="space-y-2">
+              {steps.map((step, idx) => (
+                <div key={idx} className="border border-stone-200 rounded-md p-2.5 space-y-2 bg-stone-50">
+                  <div className="flex items-start gap-2">
+                    <span className="shrink-0 w-5 h-5 rounded-full bg-amber-100 text-amber-800 text-[11px] font-semibold flex items-center justify-center mt-0.5">
+                      {idx + 1}
+                    </span>
+                    <textarea
+                      value={step.text}
+                      onChange={(e) => updateStep(idx, "text", e.target.value)}
+                      rows={2}
+                      placeholder={`Step ${idx + 1}…`}
+                      className="flex-1 border border-stone-300 rounded-md px-2.5 py-1.5 text-sm bg-white resize-none focus:outline-none focus:ring-2 focus:ring-amber-700 focus:border-amber-700"
+                    />
+                    <button
+                      onClick={() => removeStep(idx)}
+                      className="text-stone-300 hover:text-rose-600 transition mt-0.5 shrink-0"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                  {step.image ? (
+                    <div className="relative inline-block ml-7">
+                      <img src={step.image} alt="" className="h-20 rounded-md border border-stone-300 object-cover" />
+                      <button
+                        onClick={() => updateStep(idx, "image", null)}
+                        className="absolute -top-1.5 -right-1.5 bg-stone-900 text-white rounded-full w-5 h-5 flex items-center justify-center"
+                      >
+                        <X className="w-3 h-3" />
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="ml-7">
+                      <input
+                        ref={(el) => (stepFileRefs.current[idx] = el)}
+                        type="file"
+                        accept="image/*"
+                        className="hidden"
+                        onChange={(e) => handleStepImage(idx, e.target.files)}
+                      />
+                      <button
+                        onClick={() => stepFileRefs.current[idx]?.click()}
+                        className="flex items-center gap-1 text-[11px] text-stone-400 hover:text-amber-700 transition"
+                      >
+                        {uploadingStep === idx ? (
+                          <Loader2 className="w-3 h-3 animate-spin" />
+                        ) : (
+                          <ImagePlus className="w-3 h-3" />
+                        )}
+                        Add image to this step
+                      </button>
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
           </div>
           <div>
             <label className="text-xs font-semibold text-stone-500">Tags (comma separated)</label>
@@ -864,7 +961,7 @@ export default function App() {
     return entries.filter((e) => {
       if (activeCategory !== "all" && e.category !== activeCategory) return false;
       if (!q) return true;
-      const haystack = [e.title, e.model, e.summary, ...(e.tags || []), ...(e.steps || [])].join(" ").toLowerCase();
+      const haystack = [e.title, e.model, e.summary, ...(e.tags || []), ...(e.steps || []).map((s) => typeof s === "string" ? s : s.text)].join(" ").toLowerCase();
       return haystack.includes(q);
     });
   }, [entries, query, activeCategory]);
@@ -1008,7 +1105,11 @@ export default function App() {
   const copyToNotes = (entry) => {
     const text = `[${categoryLabel(entry.category)}] ${entry.title}`;
     const stepResults = Object.entries(stepStatus)
-      .map(([idx, status]) => ({ order: Number(idx), status, text: entry.steps[Number(idx)] }))
+      .map(([idx, status]) => {
+        const raw = entry.steps[Number(idx)];
+        const text = raw ? (typeof raw === "string" ? raw : raw.text) : null;
+        return { order: Number(idx), status, text };
+      })
       .filter((r) => r.text)
       .sort((a, b) => a.order - b.order)
       .map(({ status, text }) => ({ status, text }));
@@ -1457,44 +1558,58 @@ export default function App() {
               <div className="text-xs uppercase tracking-wide font-semibold text-stone-400 mb-2">Steps</div>
               <ol className="space-y-2 mb-5">
                 {(selected.steps || []).map((s, i) => {
+                  const stepText = typeof s === "string" ? s : s.text;
+                  const stepImage = typeof s === "string" ? null : s.image;
                   const status = stepStatus[i];
                   return (
                     <li
                       key={i}
-                      className={`flex items-start gap-2.5 rounded-md p-1.5 -mx-1.5 transition ${
+                      className={`rounded-md p-1.5 -mx-1.5 transition ${
                         status === "failed" ? "bg-rose-50" : status === "done" ? "bg-emerald-50" : ""
                       }`}
                     >
-                      <span
-                        className={`shrink-0 w-5 h-5 rounded-full text-[11px] font-semibold flex items-center justify-center mt-0.5 ${
-                          status === "done" ? "bg-emerald-600 text-white" : status === "failed" ? "bg-rose-600 text-white" : "bg-amber-100 text-amber-800"
-                        }`}
-                      >
-                        {status === "done" ? <Check className="w-3 h-3" /> : status === "failed" ? <X className="w-3 h-3" /> : i + 1}
-                      </span>
-                      <span className={`text-sm flex-1 ${status === "done" ? "text-stone-400 line-through" : status === "failed" ? "text-rose-800" : "text-stone-800"}`}>
-                        {s}
-                      </span>
-                      <div className="flex gap-1 shrink-0">
-                        <button
-                          onClick={() => toggleStep(i, "done")}
-                          title="Mark done"
-                          className={`w-6 h-6 rounded-md border flex items-center justify-center transition ${
-                            status === "done" ? "bg-emerald-600 border-emerald-600 text-white" : "border-stone-300 text-stone-400 hover:border-emerald-400 hover:text-emerald-600"
+                      <div className="flex items-start gap-2.5">
+                        <span
+                          className={`shrink-0 w-5 h-5 rounded-full text-[11px] font-semibold flex items-center justify-center mt-0.5 ${
+                            status === "done" ? "bg-emerald-600 text-white" : status === "failed" ? "bg-rose-600 text-white" : "bg-amber-100 text-amber-800"
                           }`}
                         >
-                          <Check className="w-3.5 h-3.5" />
-                        </button>
-                        <button
-                          onClick={() => toggleStep(i, "failed")}
-                          title="Mark not working"
-                          className={`w-6 h-6 rounded-md border flex items-center justify-center transition ${
-                            status === "failed" ? "bg-rose-600 border-rose-600 text-white" : "border-stone-300 text-stone-400 hover:border-rose-400 hover:text-rose-600"
-                          }`}
-                        >
-                          <X className="w-3.5 h-3.5" />
-                        </button>
+                          {status === "done" ? <Check className="w-3 h-3" /> : status === "failed" ? <X className="w-3 h-3" /> : i + 1}
+                        </span>
+                        <span className={`text-sm flex-1 ${status === "done" ? "text-stone-400 line-through" : status === "failed" ? "text-rose-800" : "text-stone-800"}`}>
+                          {stepText}
+                        </span>
+                        <div className="flex gap-1 shrink-0">
+                          <button
+                            onClick={() => toggleStep(i, "done")}
+                            title="Mark done"
+                            className={`w-6 h-6 rounded-md border flex items-center justify-center transition ${
+                              status === "done" ? "bg-emerald-600 border-emerald-600 text-white" : "border-stone-300 text-stone-400 hover:border-emerald-400 hover:text-emerald-600"
+                            }`}
+                          >
+                            <Check className="w-3.5 h-3.5" />
+                          </button>
+                          <button
+                            onClick={() => toggleStep(i, "failed")}
+                            title="Mark not working"
+                            className={`w-6 h-6 rounded-md border flex items-center justify-center transition ${
+                              status === "failed" ? "bg-rose-600 border-rose-600 text-white" : "border-stone-300 text-stone-400 hover:border-rose-400 hover:text-rose-600"
+                            }`}
+                          >
+                            <X className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
                       </div>
+                      {stepImage && (
+                        <div className="mt-2 ml-7">
+                          <img
+                            src={stepImage}
+                            alt={`Step ${i + 1} reference`}
+                            onClick={() => setLightbox(stepImage)}
+                            className="max-h-48 rounded-md border border-stone-200 object-contain cursor-pointer hover:opacity-90 transition"
+                          />
+                        </div>
+                      )}
                     </li>
                   );
                 })}
@@ -1562,15 +1677,14 @@ export default function App() {
       {selectedProduct && (
         <>
           <div
-            className="fixed inset-x-0 bottom-0 bg-black/30 z-10"
-            style={{ top: headerH }}
+            className="fixed inset-0 bg-black/40 z-10"
             onClick={() => setSelectedProductId(null)}
           />
           <div
-            className="fixed right-0 w-full sm:w-[26rem] bg-white shadow-2xl z-20 overflow-y-auto"
-            style={{ top: headerH, height: `calc(100% - ${headerH}px)` }}
+            className="fixed inset-x-4 sm:inset-x-auto sm:left-1/2 sm:-translate-x-1/2 sm:w-[36rem] bg-white shadow-2xl z-20 rounded-xl overflow-hidden flex flex-col"
+            style={{ top: headerH + 16, maxHeight: `calc(100% - ${headerH + 32}px)` }}
           >
-            <div className="border-b-4 border-amber-700 bg-stone-900 text-white px-5 py-4 flex items-start justify-between">
+            <div className="border-b-4 border-amber-700 bg-stone-900 text-white px-5 py-4 flex items-start justify-between shrink-0">
               <div>
                 <div className="text-[11px] uppercase tracking-wide font-semibold" style={{ color: "#d6a85c" }}>
                   {categoryLabel(selectedProduct.category)}{selectedProduct.brand ? ` · ${selectedProduct.brand}` : ""}
@@ -1581,7 +1695,7 @@ export default function App() {
                 <X className="w-5 h-5" />
               </button>
             </div>
-            <div className="p-5">
+            <div className="p-5 overflow-y-auto">
               {selectedProduct.model && (
                 <div className="font-mono-brand text-xs text-stone-500 bg-stone-100 inline-block px-2 py-1 rounded mb-3">{selectedProduct.model}</div>
               )}
