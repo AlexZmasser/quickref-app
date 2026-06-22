@@ -1216,7 +1216,7 @@ export default function App() {
                 <Upload className="w-4 h-4" />
               </button>
               <nav className="flex gap-1 bg-stone-800 rounded-md p-1">
-                {tabBtn("products", `Products${products.length ? ` (${products.length})` : ""}`)}
+                {tabBtn("products", "Products")}
                 {tabBtn("reference", "Reference")}
                 {tabBtn("notes", `Notes${notes.length ? ` (${notes.length})` : ""}`)}
               </nav>
