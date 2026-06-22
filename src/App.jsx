@@ -886,6 +886,9 @@ export default function App() {
   const [toast, setToast] = useState(null);
   const [noteDraft, setNoteDraft] = useState("");
   const [noteTag, setNoteTag] = useState("all");
+  const [callerName, setCallerName] = useState("");
+  const [callerPhone, setCallerPhone] = useState("");
+  const [callerEmail, setCallerEmail] = useState("");
   const [lightbox, setLightbox] = useState(null);
   const [headerH, setHeaderH] = useState(72);
   const headerRef = useRef(null);
@@ -1128,6 +1131,73 @@ export default function App() {
     persistNotes([{ id: "n" + Date.now(), text: noteDraft.trim(), tag: noteTag, ts: Date.now() }, ...notes]);
     setNoteDraft("");
     showToast("Note saved");
+  };
+
+  const newCall = () => {
+    if (notes.length > 0 || callerName || callerPhone || callerEmail) {
+      if (!window.confirm("Start a new call? This will clear all current notes and caller info.")) return;
+    }
+    persistNotes([]);
+    setCallerName("");
+    setCallerPhone("");
+    setCallerEmail("");
+    setNoteDraft("");
+    setNoteTag("all");
+    showToast("Ready for new call");
+  };
+
+  const exportCallPDF = () => {
+    const now = new Date();
+    const dateStr = now.toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" });
+
+    const rows = notes.map((n) => {
+      const steps = (n.stepResults || [])
+        .map((r) => `<div class="step-result ${r.status}"><span class="icon">${r.status === "done" ? "✓" : "✗"}</span> ${r.text}</div>`)
+        .join("");
+      return `
+        <div class="note">
+          <div class="note-meta">${categoryLabel(n.tag)} · ${formatTime(n.ts)}</div>
+          <div class="note-text">${n.text}</div>
+          ${steps ? `<div class="step-results">${steps}</div>` : ""}
+        </div>`;
+    }).join("");
+
+    const html = `<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Call Notes — ${callerName || "Unknown Caller"}</title>
+    <style>
+      body { font-family: Arial, sans-serif; font-size: 13px; color: #1c1917; margin: 0; padding: 32px; }
+      h1 { font-size: 20px; font-weight: bold; margin: 0 0 4px; }
+      .subtitle { color: #78716c; font-size: 12px; margin-bottom: 24px; }
+      .caller-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px; background: #f5f5f4; border-radius: 8px; padding: 16px; margin-bottom: 24px; }
+      .caller-field label { font-size: 10px; text-transform: uppercase; color: #a8a29e; font-weight: bold; display: block; margin-bottom: 2px; }
+      .caller-field span { font-size: 13px; font-weight: 600; }
+      h2 { font-size: 13px; text-transform: uppercase; letter-spacing: 0.05em; color: #a8a29e; margin: 0 0 12px; border-bottom: 1px solid #e7e5e4; padding-bottom: 6px; }
+      .note { border: 1px solid #e7e5e4; border-radius: 6px; padding: 12px; margin-bottom: 10px; }
+      .note-meta { font-size: 10px; color: #a8a29e; margin-bottom: 4px; }
+      .note-text { font-size: 13px; font-weight: 600; margin-bottom: 6px; }
+      .step-results { margin-top: 6px; padding-top: 6px; border-top: 1px solid #f5f5f4; }
+      .step-result { font-size: 12px; padding: 2px 0; display: flex; gap: 6px; }
+      .step-result.done { color: #16a34a; }
+      .step-result.failed { color: #dc2626; }
+      .icon { width: 14px; shrink: 0; }
+      .empty { color: #a8a29e; font-style: italic; }
+      @media print { body { padding: 20px; } }
+    </style></head><body>
+    <h1>Call Notes</h1>
+    <div class="subtitle">Exported ${dateStr}</div>
+    <div class="caller-grid">
+      <div class="caller-field"><label>Name</label><span>${callerName || "—"}</span></div>
+      <div class="caller-field"><label>Phone</label><span>${callerPhone || "—"}</span></div>
+      <div class="caller-field"><label>Email</label><span>${callerEmail || "—"}</span></div>
+    </div>
+    <h2>Notes</h2>
+    ${rows || '<div class="empty">No notes recorded for this call.</div>'}
+    </body></html>`;
+
+    const w = window.open("", "_blank");
+    w.document.write(html);
+    w.document.close();
+    w.focus();
+    setTimeout(() => w.print(), 400);
   };
 
   const deleteNote = (id) => {
@@ -1446,7 +1516,42 @@ export default function App() {
           </>
         ) : (
           <>
-            <div className="bg-white border border-stone-300 rounded-lg p-4 mb-5">
+            {/* Caller info card */}
+            <div className="bg-white border border-stone-300 rounded-lg p-4 mb-4">
+              <div className="text-xs font-semibold text-stone-500 uppercase tracking-wide mb-3">Caller details</div>
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                <div>
+                  <label className="text-[11px] text-stone-400 font-semibold">Name</label>
+                  <input
+                    value={callerName}
+                    onChange={(e) => setCallerName(e.target.value)}
+                    placeholder="Customer name"
+                    className="w-full border border-stone-300 rounded-md px-2.5 py-1.5 text-sm mt-1 focus:outline-none focus:ring-2 focus:ring-amber-700 focus:border-amber-700"
+                  />
+                </div>
+                <div>
+                  <label className="text-[11px] text-stone-400 font-semibold">Phone</label>
+                  <input
+                    value={callerPhone}
+                    onChange={(e) => setCallerPhone(e.target.value)}
+                    placeholder="04xx xxx xxx"
+                    className="w-full border border-stone-300 rounded-md px-2.5 py-1.5 text-sm mt-1 focus:outline-none focus:ring-2 focus:ring-amber-700 focus:border-amber-700"
+                  />
+                </div>
+                <div>
+                  <label className="text-[11px] text-stone-400 font-semibold">Email</label>
+                  <input
+                    value={callerEmail}
+                    onChange={(e) => setCallerEmail(e.target.value)}
+                    placeholder="email@example.com"
+                    className="w-full border border-stone-300 rounded-md px-2.5 py-1.5 text-sm mt-1 focus:outline-none focus:ring-2 focus:ring-amber-700 focus:border-amber-700"
+                  />
+                </div>
+              </div>
+            </div>
+
+            {/* Note input card */}
+            <div className="bg-white border border-stone-300 rounded-lg p-4 mb-4">
               <textarea
                 value={noteDraft}
                 onChange={(e) => setNoteDraft(e.target.value)}
@@ -1468,15 +1573,31 @@ export default function App() {
                   onClick={addNote}
                   className="bg-amber-700 hover:bg-amber-800 text-white text-sm font-medium px-4 py-1.5 rounded-md transition"
                 >
-                  Save note
+                  Add note
                 </button>
               </div>
+            </div>
+
+            {/* Action buttons */}
+            <div className="flex gap-2 mb-5">
+              <button
+                onClick={exportCallPDF}
+                className="flex-1 flex items-center justify-center gap-1.5 bg-stone-800 hover:bg-stone-900 text-white text-sm font-medium px-4 py-2 rounded-md transition"
+              >
+                <Download className="w-3.5 h-3.5" /> Save / Send note
+              </button>
+              <button
+                onClick={newCall}
+                className="flex items-center justify-center gap-1.5 border border-stone-300 text-stone-600 hover:border-rose-400 hover:text-rose-600 text-sm font-medium px-4 py-2 rounded-md transition"
+              >
+                <Plus className="w-3.5 h-3.5" /> New call
+              </button>
             </div>
 
             {notes.length === 0 ? (
               <div className="text-center py-16 text-stone-400">
                 <ClipboardList className="w-8 h-8 mx-auto mb-2" />
-                <div className="text-sm">No notes yet — they'll show up here as you save them during calls.</div>
+                <div className="text-sm">No notes yet — they'll show up here as you add them during the call.</div>
               </div>
             ) : (
               <div className="space-y-2">
